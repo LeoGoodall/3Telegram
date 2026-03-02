@@ -1,0 +1,29 @@
+category,theme,n,prop
+764,Antisemitism,2905,0.013681017999604405
+764,Appearance,109,5.133325170247436e-4
+764,CSAM/Exploitation,170217,0.801632303214686
+764,Gaming,2463,0.011599431095705904
+764,Non-English,371,0.00174721434693743
+764,OPSEC/OSINT,253,0.0011914965762133956
+764,Other,28604,0.13470975520161252
+764,Racism/White Nationalism,7416,0.03492544904821558
+terrorgram,Accelerationism,2291,0.034077048936486685
+terrorgram,Antisemitism,10590,0.1575189647478804
+terrorgram,Firearms/Weapons,2856,0.04248103525211959
+terrorgram,Fitness/Combat Sports,2230,0.03316971590063959
+terrorgram,Gaming,317,0.004715156923992265
+terrorgram,Non-English,1657,0.024646735088502156
+terrorgram,Occult/Pagan,2033,0.03023947642421538
+terrorgram,Other,31443,0.4676929941990183
+terrorgram,Propaganda,6512,0.09686152015469285
+terrorgram,Racism/White Nationalism,7301,0.10859735237245277
+white-supremacist,Accelerationism,185,8.358370795400637e-4
+white-supremacist,Antisemitism,35647,0.16105451013170083
+white-supremacist,Appearance,7147,0.03229041949985317
+white-supremacist,Firearms/Weapons,20784,0.09390290735762533
+white-supremacist,Fitness/Combat Sports,4900,0.022138387512142227
+white-supremacist,Non-English,430,0.001942756455147175
+white-supremacist,Occult/Pagan,9926,0.04484604784602526
+white-supremacist,Other,102848,0.464671199765062
+white-supremacist,Racism/White Nationalism,35647,0.16105451013170083
+white-supremacist,Survivalism/Outdoors,3821,0.017263424221203152

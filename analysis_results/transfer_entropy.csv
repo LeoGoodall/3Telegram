@@ -1,0 +1,9 @@
+category,source,target,te,p_value,lags,omnibus_te,omnibus_p
+terrorgram,Outgroup Othering,Identity Fusion,0.03613,0.002,[5],0.03613,0.002
+terrorgram,Outgroup Othering,Violence Condoning,0.021891,0.004,[5],0.021891,0.002
+terrorgram,Outgroup Othering,Existential Threat,0.026049,0.002,[7],0.026049,0.002
+white-supremacist,Existential Threat,Identity Fusion,0.010037,0.002,[3],0.010037,0.002
+white-supremacist,Outgroup Othering,Violence Condoning,0.011169,0.002,[7],0.020896,0.002
+white-supremacist,Identity Fusion,Violence Condoning,0.009543,0.002,[2],0.020896,0.002
+white-supremacist,Outgroup Othering,Existential Threat,0.014623,0.002,[4],0.026927,0.002
+white-supremacist,Violence Condoning,Existential Threat,0.016799,0.002,"[1, 4]",0.026927,0.002

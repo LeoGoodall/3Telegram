@@ -1,0 +1,19 @@
+feature_a,feature_b,category,observed,expected,obs_exp_ratio,phi,p_value
+Identity Fusion,Violence Condoning,764,41,3.7,11.06,0.0357,5.201978623844977e-85
+Identity Fusion,Violence Condoning,terrorgram,424,49.5,8.57,0.1629,0
+Identity Fusion,Violence Condoning,white-supremacist,397,62.7,6.34,0.0756,0
+Identity Fusion,Existential Threat,764,53,0.1,53,0.306,0
+Identity Fusion,Existential Threat,terrorgram,460,22.1,20.77,0.2805,0
+Identity Fusion,Existential Threat,white-supremacist,352,10.7,33,0.1834,0
+Identity Fusion,Outgroup Othering,764,71,18.2,3.9,0.0236,3.1455188634434096e-38
+Identity Fusion,Outgroup Othering,terrorgram,601,182.7,3.29,0.1024,4.174444696359388e-261
+Identity Fusion,Outgroup Othering,white-supremacist,631,242.3,2.6,0.048,1.0243191199910758e-166
+Violence Condoning,Existential Threat,764,48,2.3,20.94,0.0556,1.0696788721900066e-203
+Violence Condoning,Existential Threat,terrorgram,1455,133.3,10.91,0.3527,0
+Violence Condoning,Existential Threat,white-supremacist,1286,112.1,11.48,0.1987,0
+Violence Condoning,Outgroup Othering,764,1607,417.8,3.85,0.1119,0
+Violence Condoning,Outgroup Othering,terrorgram,4015,1100,3.65,0.2973,0
+Violence Condoning,Outgroup Othering,white-supremacist,8902,2545.3,3.5,0.2473,0
+Existential Threat,Outgroup Othering,764,101,11.3,8.98,0.051,7.749171104341072e-172
+Existential Threat,Outgroup Othering,terrorgram,2431,492.4,4.94,0.2912,0
+Existential Threat,Outgroup Othering,white-supremacist,2280,433.4,5.26,0.1708,0
