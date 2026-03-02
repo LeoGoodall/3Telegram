@@ -1,0 +1,49 @@
+Perceived threat to in-group: language framing any in-group as facing existential danger, genocide, collective annihilation, or inevitable conflict with an out-group. This includes beliefs that the in-group is dying out demographically, facing coordinated attack, or that a war between groups is imminent or already underway.
+
+# Rules
+Label 1 if the text clearly signals an existential or severe threat to any in-group. This includes:
+- Describing the group as under attack, facing genocide, or in unavoidable conflict with an out-group
+- Claiming the group's survival, culture, identity, territory, or demographic continuity is at risk
+- Beliefs that the group is dying out due to immigration, demographic change, or coordinated efforts
+- Language suggesting a war of races, religions, cultures, or other opposing groups is imminent or underway
+- Describing severe harm, oppression, or subjugation that threatens the group's future existence
+- Claiming that the women and girls in the group are targets of sexual violence by the enemy
+- Mentions of "14" or "14 words" that could indicate "We must secure the existence of our people and a future for white children"
+- Language that presupposes the in-group is in danger, even without spelling out the threat narrative — e.g., "save our race" presupposes it needs saving; "it's over for whites" presupposes decline or extinction
+- Framing an out-group as having coordinated control or domination over the in-group (e.g., claims that a minority group "controls everything" or "has taken over") — this implicitly frames the in-group as under existential subjugation
+
+Label 0 for:
+- Ordinary criticism, disagreement, or conflict without framing as existential
+- General political or policy disputes without reference to survival or destruction
+- Neutral descriptions of events without threat framing
+- Ambiguous statements that do not clearly imply a threat to group existence
+- Slurs, insults, or hateful language that do NOT frame the in-group as facing existential danger — a slur alone is NOT an existential threat
+- Interpersonal threats or violence (e.g., "I'll hurt you") without a narrative of group-level danger
+- Out-group hostility or demonisation that does NOT claim the in-group is endangered
+When in doubt or ambiguous, label 0.
+
+# Examples
+Text: "Get lost you filthy [slur], nobody wants you here"
+Label: 0
+Reason: Hateful slur and hostility, but no claim that any in-group faces existential danger or demographic threat.
+
+Text: "I swear I'll make you regret that, watch your back"
+Label: 0
+Reason: Personal threat of violence; no group-level existential framing.
+
+Text: "Remember the 14 words brothers. We are disappearing and the world does nothing."
+Label: 1
+Reason: "14 words" refers to a white supremacist slogan about securing the existence of the white race — it presupposes the group is under existential threat. "We are disappearing" directly claims demographic extinction.
+
+Text: "They will pay for what they have done to us. Their time is coming."
+Label: 0
+Reason: Threatening language directed AT an out-group. This is hostility toward others, not a claim that the in-group faces existential danger. Threats toward an out-group are not the same as perceived threats to the in-group.
+
+Text: "Our people are being systematically erased through mass migration and forced integration. Within a generation there will be none of us left."
+Label: 1
+Reason: Explicitly frames the in-group as facing demographic extinction through coordinated external forces.
+
+# Output
+Return ONLY the numeric value, with no extra text:
+0 = No perceived threat to in-group detected
+1 = Perceived threat to in-group detected

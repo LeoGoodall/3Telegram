@@ -1,0 +1,52 @@
+Violence condoning norms: language that calls for, announces, justifies, or glorifies violence. This includes explicit calls for killing, harm, or destruction, as well as legitimising violence as necessary, unavoidable, defensive, pre-emptive, or morally required. It also includes glorifying perpetrators of violence as heroes, martyrs, or defenders.
+
+# Rules
+Label 1 if the text clearly condones violence. This includes:
+- Explicit calls for harm, killing, or destruction directed at people or groups
+- Announcing intentions to commit violence
+- Justifying violence as self-defence, protection, pre-emptive action, or escape from a harmful condition
+- Claiming that peaceful alternatives to violence would be ineffective
+- Language such as "pre-emptive," "forced to fight," "need for war," "protect our people"
+- Calling for war, retaliation, or punishment by violent means
+- Glorifying perpetrators of violence, framing them as heroes, martyrs, saints, or defenders
+- Language that reveals fixation on specific weapons (e.g. extensive focus on specific gun models, ammunition or explosives)
+- Any mentions of the number 88
+- Euphemistic or indirect endorsements of violence — e.g., describing people as a "target rich environment," calling for groups to be "purged" or "cleansed," or expressing "no remorse" for violence against specific groups
+- "RAHOWA" (abbreviation for "Racial Holy War") and "DOTR" (abbreviation for "Day of the Rope," referencing mass executions in The Turner Diaries) — these are explicit calls for violence even though they appear as abbreviations
+
+Label 0 for:
+- Mere descriptions of violent events without endorsement
+- Calls for justice, legal accountability, or punishment without advocating violence
+- Non-violent criticism or hostility toward any group
+- Ambiguous metaphors that do not clearly endorse or celebrate violence
+- Insults, slurs, or profanity that express hostility but do not genuinely call for, justify, or glorify physical violence (e.g., "drop dead" or "go to hell" as expressions of contempt)
+- Reporting or quoting others' violent statements without endorsing them
+- Slang where violent-sounding words are used non-literally (e.g., "nuke the server" meaning shut it down)
+- Extreme racial slurs or hateful epithets that express bigotry but do not specifically call for, justify, or glorify physical violence — the presence of slurs alone does not constitute violence condoning
+When in doubt or ambiguous, label 0.
+
+# Examples
+Text: "You worthless scum, I hope you rot. I'm gonna nuke their channel"
+Label: 0
+Reason: Hostile insult expressing contempt, but not a genuine call for, justification of, or glorification of violence. Nuking often refers to shutting a Telegram channel down, not violence.
+
+Text: "A senior official reportedly said all dissenters should be eliminated"
+Label: 0
+Reason: Reporting someone else's violent statement, not endorsing or condoning it.
+
+Text: "RAHOWA is inevitable. No mercy for the enemy."
+Label: 1
+Reason: "RAHOWA" is an abbreviation for "Racial Holy War" — an explicit call for race war. Combined with "no mercy for the enemy," this condones and glorifies violence.
+
+Text: "It looks like he suffered massive internal injuries and bled out within minutes"
+Label: 0
+Reason: Clinical or factual description of injuries or a violent event, without endorsing, celebrating, or calling for violence.
+
+Text: "The only solution is armed struggle. Every fighter who takes up the cause is a hero and a martyr for our people."
+Label: 1
+Reason: Explicitly calls for armed violence and glorifies those who carry it out as heroes and martyrs.
+
+# Output
+Return ONLY the numeric value, with no extra text:
+0 = No violence condoning language detected
+1 = Violence condoning language detected

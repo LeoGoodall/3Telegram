@@ -1,0 +1,52 @@
+Identity fusion: a form of group alignment in which an individual's personal identity fully overlaps with their in-group identity, making them more willing to engage in extreme forms of pro-group action. Fused individuals may use metaphors of kinship and family relatedness to describe other group members (e.g., "brothers", "sisters", "family", "sons", "daughters", "descendants", "ancestors", "brotherhood", "motherland", "fatherland"). They may reference shared biological "essence", "genes", or "blood", or describe shared transformative experiences with other group members (e.g., "we suffered together", "our feet were bleeding").  They may also emphasize personally transformative experiences that are also group defining. Fused individuals may also express willingness to sacrifice themselves for the group.
+
+# Rules
+Label 1 if the text shows evidence of identity fusion with any group. This includes:
+- Kinship terms applied to the group ("brothers," "sisters," "family," "motherland," etc.) when used meaningfully rather than as casual expressions (e.g. "hey bro")
+- References to shared biological essence, genes, blood, or common ancestry — even brief or fragmentary (e.g. "the old blood", "blood instinct", "by our ancestors")
+- References to shared ancestry, descent, clans, tribes, lineages, or founding fathers
+- Possessive identification with a racial, ethnic, or ideological group ("our people," "our race," "our folk," "our nation") when combined with shared duty, destiny, or collective fate
+- Language of shared transformative experiences ("we bled together," "we suffered as one," "the struggle defines us")
+- Willingness to sacrifice, fight, or die for the group or its cause — including casual or brief expressions of this
+- Equivalence of self and group ("I am the movement," "their pain is my pain," "the group makes me who I am")
+- Fate/interests of self and fate/interests of group treated as equivalent
+- Personal awakening or commitment to action framed as serving the group's survival or mission
+- Mentions of "14" or "14 words" that could indicate "We must secure the existence of our people and a future for white children"
+
+Label 0 for:
+- Kinship terms when they are applied to actual biological family members
+- Group favouritism or pride without functional equivalence of self and group
+- Us-them contrasts, collective action, or unity appeals without reference to shared essence, ancestry, or self-sacrifice
+- Weak or ambiguous metaphors ("we should unite" or "we are the best")
+- Hatred, violence, or threats directed at an out-group — these may be extreme but are NOT identity fusion unless the speaker also merges their personal identity with the in-group
+When in doubt or ambiguous, label 0.
+
+# Examples
+Text: "Those people betrayed our God and for that they deserve to be wiped out."
+Label: 0
+Reason: Expresses religious hatred and violence toward an out-group, but no merging of personal and group identity.
+
+Text: "We need to organize and push back against this. Everyone get involved."
+Label: 0
+Reason: Collective action appeal without reference to shared essence, blood, ancestry, kinship, or self-sacrifice.
+
+Text: "The future of our race depends on every one of us. Our forefathers bled for this land and their blood runs through our veins. I would give my life to secure what they built."
+Label: 1
+Reason: Shared ancestry ("forefathers"), biological essence ("blood runs through our veins"), and willingness to sacrifice for the group.
+
+Text: "I am ready to give everything for what I believe in."
+Label: 1
+Reason: Willingness to sacrifice for the cause. Even casual or brief expressions of readiness to die or suffer for the group qualify.
+
+Text: "The ancestral blood still runs deep. 14/88"
+Label: 1
+Reason: Reference to shared biological essence ("ancestral blood") and the "14 words". Even very short or fragmentary references to blood, ancestors, or lineage qualify — they do not need to be in full sentences.
+
+Text: "We must secure the future for our people. Every one of us has a duty to act."
+Label: 1
+Reason: Possessive group identification ("our people") combined with shared duty and collective fate. When someone frames a racial or ethnic group as "our people" and ties personal obligation to the group's survival, this is identity fusion.
+
+# Output
+Return ONLY the numeric value, with no extra text:
+0 = No identity fusion detected
+1 = Identity fusion detected

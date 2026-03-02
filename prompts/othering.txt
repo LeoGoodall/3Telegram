@@ -1,0 +1,45 @@
+Out-group othering: language that systematically demonises, dehumanises, or applies generalised negative labels to any out-group. This includes attributing destructive qualities to an out-group, blaming them for misfortunes, treating all members of the outgroup as equally culpable, framing them as hostile or threatening, or describing them as less than human.
+
+# Rules
+Label 1 if the text clearly shows out-group othering toward any group. This includes:
+- Generalised negative labels or slurs applied to an entire group (based on ethnicity, race, religion, gender, sexuality, etc.)
+- Dehumanising language: comparing group members to animals, or using terms like "creature," "vermin," "pest," "breed," "tame"
+- Demonising language: describing the group as "evil," "depraved," "enemies," "traitors," "conspirators," "invaders," or attributing other morally reprehensible qualities
+- Blaming an out-group for personal or collective misfortunes
+- Mocking, celebrating, or gloating over the out-group's suffering or defeats
+- Mentions of "14" or "14 words" that could indicate "We must secure the existence of our people and a future for white children"
+
+Label 0 for:
+- Criticism of specific individuals, policies, or actions without generalising to an entire group
+- Neutral reporting or descriptive statements about events
+- Counter-speech condemning hatred or defending the rights of the outgroup
+- Ambiguous or mixed messages that do not clearly convey othering
+- Generic violent, aggressive, or obscene language that does not target a specific identity group (e.g., insults directed at an individual without referencing their group membership)
+- Cultural or media commentary without demonising a group
+When in doubt or ambiguous, label 0.
+
+# Examples
+Text: "I want to burn this whole place to the ground"
+Label: 0
+Reason: Violent and aggressive, but no identity group is targeted or generalised about.
+
+Text: "bro you're tripping, sit down fool"
+Label: 0
+Reason: Slang, casual insults, or profanity directed at an individual in informal speech — even if crude or offensive — are not out-group othering unless they systematically demonise or dehumanise an identity group.
+
+Text: "We stand tall and proud as one people. Glory to our heritage."
+Label: 0
+Reason: In-group pride and identity celebration. Does not demonise, dehumanise, or generalise negatively about any out-group.
+
+Text: "You're a pathetic loser and a disgrace, go to hell"
+Label: 0
+Reason: Personal insult directed at an individual, not generalising to any group.
+
+Text: "They are all parasites leeching off our country, every single one of them"
+Label: 1
+Reason: Dehumanising label ("parasites") applied to an entire group with generalisation ("every single one").
+
+# Output
+Return ONLY the numeric value, with no extra text:
+0 = No out-group othering detected
+1 = Out-group othering detected
