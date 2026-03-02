@@ -1,0 +1,7 @@
+feature_a,feature_b,observed,expected,obs_exp_ratio,phi,odds_ratio,chi_sq,p_value
+Identity Fusion,Violence Condoning,862,89.1,9.67,0.0969,14.46,6963.9,0
+Identity Fusion,Existential Threat,865,18.3,47.32,0.2311,84.36,39640.4,0
+Identity Fusion,Outgroup Othering,1303,359.5,3.62,0.0624,6.36,2885.6,0
+Violence Condoning,Existential Threat,2789,180.8,15.43,0.23,35.59,39253.7,0
+Violence Condoning,Outgroup Othering,14524,3555.7,4.08,0.2342,9.31,40700,0
+Existential Threat,Outgroup Othering,4812,729.1,6.6,0.1899,72.31,26746,0
