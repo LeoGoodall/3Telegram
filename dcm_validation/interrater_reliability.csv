@@ -1,0 +1,9 @@
+sample,feature,n,pct_agreement,cohens_kappa
+original,identity_fusion,299,0.99,0.7222
+original,outgroup_othering,299,0.9632,0.7723
+original,existential_threat,299,1.0,1.0
+original,violence_condoning,299,0.9866,0.7431
+enrichment,identity_fusion,120,0.9417,0.7667
+enrichment,outgroup_othering,120,0.9333,0.8594
+enrichment,existential_threat,120,0.95,0.8272
+enrichment,violence_condoning,120,0.9417,0.868
