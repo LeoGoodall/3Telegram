@@ -1,0 +1,332 @@
+---
+title: "Topic Modelling Analysis"
+subtitle: "BERTopic Analysis of Extremist Telegram Channels — Full Statistical Analysis and Visualisations"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    latex_engine: xelatex
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 12, fig.height = 8, dpi = 300)
+
+library(tidyverse)
+library(scales)
+library(viridis)
+library(patchwork)
+library(knitr)
+
+BASE_DIR <- "/Volumes/One Touch/terrorgram"
+RESULTS_DIR <- file.path(BASE_DIR, "topic_modelling")
+FIGURES_DIR <- file.path(BASE_DIR, "figures_tm")
+dir.create(FIGURES_DIR, showWarnings = FALSE, recursive = TRUE)
+
+CATEGORY_LABELS <- c(
+  "764" = "764",
+  "terrorgram" = "Terrorgram",
+  "white-supremacist" = "White Supremacist"
+)
+
+CATEGORY_COLORS <- c(
+  "764" = "#e74c3c",
+  "terrorgram" = "#3498db",
+  "white-supremacist" = "#2ecc71"
+)
+
+theme_publication <- function() {
+  theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 12),
+      axis.title = element_text(size = 10),
+      legend.title = element_text(face = "bold", size = 10),
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      strip.text = element_text(face = "bold")
+    )
+}
+```
+
+## Data Loading
+
+```{r load-data}
+labels <- read_csv(file.path(RESULTS_DIR, "step3_validation/topic_labels_with_coherence.csv"))
+coherence <- read_csv(file.path(RESULTS_DIR, "step3_validation/topic_coherence.csv"))
+diversity <- read_csv(file.path(RESULTS_DIR, "step3_validation/topic_diversity.csv"))
+trends <- read_csv(file.path(RESULTS_DIR, "step4_temporal/topic_trends.csv"))
+```
+
+The topic modelling pipeline fitted separate BERTopic models for each of the three movement categories, yielding 19 topics per category (plus a noise topic). The data below summarise the model outputs.
+
+---
+
+## Summary Statistics
+
+### Topics per Category
+
+```{r summary-topics}
+topic_summary <- labels %>%
+  group_by(category) %>%
+  summarise(
+    n_topics = n(),
+    total_messages = sum(message_count),
+    mean_messages = round(mean(message_count)),
+    median_messages = round(median(message_count)),
+    .groups = "drop"
+  ) %>%
+  mutate(category_label = CATEGORY_LABELS[category])
+
+topic_summary %>%
+  select(category_label, n_topics, total_messages, mean_messages, median_messages) %>%
+  kable(col.names = c("Category", "Topics", "Total Messages", "Mean Messages", "Median Messages"),
+        caption = "Topic model summary by category",
+        format.args = list(big.mark = ","))
+```
+
+### Coherence Summary
+
+```{r summary-coherence}
+coherence_summary <- coherence %>%
+  group_by(category) %>%
+  summarise(
+    n = n(),
+    mean_npmi = round(mean(coherence_npmi, na.rm = TRUE), 4),
+    sd_npmi = round(sd(coherence_npmi, na.rm = TRUE), 4),
+    min_npmi = round(min(coherence_npmi, na.rm = TRUE), 4),
+    median_npmi = round(median(coherence_npmi, na.rm = TRUE), 4),
+    max_npmi = round(max(coherence_npmi, na.rm = TRUE), 4),
+    pct_positive = percent(mean(coherence_npmi > 0, na.rm = TRUE), accuracy = 0.1),
+    .groups = "drop"
+  ) %>%
+  mutate(category_label = CATEGORY_LABELS[category])
+
+coherence_summary %>%
+  select(category_label, n, mean_npmi, sd_npmi, min_npmi, median_npmi, max_npmi, pct_positive) %>%
+  kable(col.names = c("Category", "N", "Mean", "SD", "Min", "Median", "Max", "% Positive"),
+        caption = "NPMI coherence summary by category")
+```
+
+### Diversity Summary
+
+Topic vocabulary diversity measures the proportion of unique terms across all topics within each category. Higher diversity indicates that topics use more distinct vocabulary.
+
+```{r summary-diversity}
+diversity %>%
+  mutate(
+    category_label = CATEGORY_LABELS[category],
+    diversity = percent(diversity, accuracy = 0.1)
+  ) %>%
+  select(category_label, diversity) %>%
+  kable(col.names = c("Category", "Vocabulary Diversity"),
+        caption = "Topic vocabulary diversity (proportion of unique terms across all topics)")
+```
+
+764 had the highest topic diversity (`r diversity %>% filter(category == "764") %>% pull(diversity) %>% percent(accuracy = 0.1)`), indicating the most distinct vocabulary across topics. White supremacist channels showed the lowest topic diversity (`r diversity %>% filter(category == "white-supremacist") %>% pull(diversity) %>% percent(accuracy = 0.1)`), and Terrorgram occupied an intermediate position (`r diversity %>% filter(category == "terrorgram") %>% pull(diversity) %>% percent(accuracy = 0.1)`).
+
+---
+
+## Topic Distribution by Category
+
+```{r topic-distribution, fig.width=14, fig.height=10}
+p_dist <- labels %>%
+  mutate(
+    category_label = CATEGORY_LABELS[category],
+    label_short = str_trunc(label, 25)
+  ) %>%
+  ggplot(aes(x = reorder(label_short, message_count), y = message_count, fill = category)) +
+  geom_col(alpha = 0.8) +
+  coord_flip() +
+  facet_wrap(~category_label, scales = "free", ncol = 3) +
+  scale_fill_manual(values = CATEGORY_COLORS, guide = "none") +
+  scale_y_log10(labels = comma) +
+  labs(
+    title = "Topic Distribution by Message Volume",
+    x = NULL,
+    y = "Message Count"
+  ) +
+  theme_publication() +
+  theme(
+    axis.text.y = element_text(size = 7),
+    strip.text = element_text(size = 10)
+  )
+
+p_dist
+
+ggsave(file.path(FIGURES_DIR, "topic_distribution.pdf"), p_dist, width = 14, height = 10)
+```
+
+---
+
+## Coherence Comparison
+
+```{r coherence, fig.width=14, fig.height=12}
+p_coh_a <- coherence %>%
+  mutate(category_label = CATEGORY_LABELS[category]) %>%
+  ggplot(aes(x = category_label, y = coherence_npmi, fill = category)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_fill_manual(values = CATEGORY_COLORS, guide = "none") +
+  labs(
+    title = "Topic Coherence by Category",
+    x = NULL,
+    y = "NPMI Coherence"
+  ) +
+  theme_publication()
+
+p_coh_b <- coherence %>%
+  mutate(
+    category_label = CATEGORY_LABELS[category],
+    label_short = str_trunc(label, 20),
+    color = ifelse(coherence_npmi < 0, "negative", "positive")
+  ) %>%
+  ggplot(aes(x = reorder(label_short, coherence_npmi), y = coherence_npmi, fill = color)) +
+  geom_col(alpha = 0.8) +
+  coord_flip() +
+  facet_wrap(~category_label, scales = "free_y", ncol = 3) +
+  scale_fill_manual(values = c("negative" = "#e74c3c", "positive" = "#2ecc71"), guide = "none") +
+  geom_hline(yintercept = 0, linewidth = 0.3) +
+  labs(
+    title = "Coherence Score by Topic",
+    x = NULL,
+    y = "NPMI Coherence"
+  ) +
+  theme_publication() +
+  theme(axis.text.y = element_text(size = 9))
+
+p_coherence <- p_coh_a / p_coh_b + plot_layout(heights = c(1, 2))
+p_coherence
+
+ggsave(file.path(FIGURES_DIR, "coherence_comparison.pdf"), p_coherence, width = 14, height = 12)
+```
+
+---
+
+## Thematic Overlap Venn Diagram
+
+The Venn diagram shows the manually assigned thematic categories for each movement (excluding "Other"), highlighting shared and unique themes across the three movements.
+
+```{r venn, fig.width=8, fig.height=7}
+library(ggVennDiagram)
+
+# Theme sets per category (excluding Other)
+theme_sets <- list(
+  "764" = c("CSAM/Exploitation", "Racism/WN", "Antisemitism",
+            "Gaming", "Non-English", "OPSEC/OSINT", "Appearance"),
+  "Terrorgram" = c("Accelerationism", "Antisemitism", "Firearms/Weapons",
+                    "Fitness", "Gaming", "Non-English",
+                    "Occult/Pagan", "Propaganda", "Racism/WN"),
+  "White Supremacist" = c("Accelerationism", "Antisemitism", "Appearance",
+                           "Firearms/Weapons", "Fitness",
+                           "Non-English", "Occult/Pagan", "Racism/WN",
+                           "Survivalism")
+)
+
+# Build the base Venn with no labels, then extract region positions
+p_base <- ggVennDiagram(theme_sets, label = "count", label_alpha = 0, edge_size = 0.5)
+built <- ggplot_build(p_base)
+
+# Layer 4 has the region labels; extract their positions
+region_coords <- built$data[[4]][, c("x", "y")]
+
+# Get region items in matching order
+venn_obj <- Venn(theme_sets)
+data <- process_data(venn_obj)
+regions <- venn_region(data)
+
+region_coords$label_text <- sapply(regions$item, function(items) {
+  if (length(items) == 0) return("")
+  paste(items, collapse = "\n")
+})
+
+# Rebuild plot with custom text labels instead of counts
+p_venn <- ggVennDiagram(theme_sets, label = "none",
+                         label_alpha = 0, edge_size = 0.5) +
+  geom_text(data = region_coords,
+            aes(x = x, y = y, label = label_text),
+            size = 2.8, lineheight = 1.15) +
+  scale_fill_gradient(low = "white", high = "#3498db", guide = "none") +
+  scale_color_manual(values = c("764" = "#e74c3c",
+                                "Terrorgram" = "#3498db",
+                                "White Supremacist" = "#2ecc71")) +
+  labs(
+    title = "Thematic Overlap Across Categories",
+    subtitle = "Shared and unique theme categories (excluding Other)"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5),
+    legend.position = "none"
+  )
+
+p_venn
+
+ggsave(file.path(FIGURES_DIR, "venn_diagram.pdf"), p_venn, width = 8, height = 7)
+```
+
+---
+
+## Emerging and Declining Topics
+
+```{r trends, fig.width=14, fig.height=8}
+p_trends <- trends %>%
+  filter(trend != "Stable") %>%
+  mutate(
+    category_label = CATEGORY_LABELS[category],
+    label_short = str_trunc(label, 30),
+    change_pct_capped = pmax(pmin(change_pct, 500), -100)
+  ) %>%
+  ggplot(aes(x = reorder(label_short, change_pct_capped), y = change_pct_capped, fill = trend)) +
+  geom_col(alpha = 0.8) +
+  coord_flip() +
+  facet_wrap(~category_label, scales = "free_y") +
+  scale_fill_manual(values = c("Emerging" = "#2ecc71", "Declining" = "#e74c3c")) +
+  geom_hline(yintercept = 0, linewidth = 0.3) +
+  labs(
+    title = "Emerging and Declining Topics",
+    subtitle = "Change in prevalence (Pre-2023 vs Post-2023)",
+    x = NULL,
+    y = "Change (%)",
+    fill = "Trend"
+  ) +
+  theme_publication() +
+  theme(axis.text.y = element_text(size = 9))
+
+p_trends
+
+ggsave(file.path(FIGURES_DIR, "topic_trends.pdf"), p_trends, width = 14, height = 8)
+```
+
+### Trend Summary
+
+```{r trend-summary}
+trend_summary <- trends %>%
+  count(category, trend) %>%
+  pivot_wider(names_from = trend, values_from = n, values_fill = 0) %>%
+  mutate(category_label = CATEGORY_LABELS[category])
+
+trend_summary %>%
+  select(category_label, everything(), -category) %>%
+  kable(caption = "Number of topics by trend direction per category")
+```
+
+```{r trend-top}
+trends %>%
+  filter(trend != "Stable") %>%
+  group_by(category) %>%
+  slice_max(abs(change_pct), n = 5) %>%
+  ungroup() %>%
+  mutate(
+    category_label = CATEGORY_LABELS[category],
+    change_pct = round(change_pct, 1)
+  ) %>%
+  select(category_label, label, trend, change_pct) %>%
+  kable(col.names = c("Category", "Topic", "Trend", "Change (%)"),
+        caption = "Top 5 most changed topics per category (by absolute change)")
+```

@@ -1,0 +1,1352 @@
+---
+title: "DCM Analysis Report"
+subtitle: "Deadly Cocktail Model — Full Statistical Analysis and Visualisations"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    latex_engine: xelatex
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = FALSE, message = FALSE,
+  fig.width = 12, fig.height = 5, dpi = 300
+)
+
+library(tidyverse)
+library(sandwich)
+library(lmtest)
+library(broom)
+library(scales)
+library(knitr)
+
+BASE_DIR <- "/Volumes/One Touch/terrorgram"
+DATA_PATH <- file.path(BASE_DIR, "dcm_annotations/parsed_results/telegram_dcm_annotations.csv")
+OUTPUT_DIR <- file.path(BASE_DIR, "dcm_annotations/analysis_results")
+FIGURES_DIR <- file.path(BASE_DIR, "figures_dcm")
+dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
+dir.create(FIGURES_DIR, showWarnings = FALSE, recursive = TRUE)
+
+FEATURES <- c("identityfusion_bin", "violentlang_bin", "threat_bin", "outgroup_othering_bin")
+FEATURE_LABELS <- c(
+  identityfusion_bin    = "Identity Fusion",
+  violentlang_bin       = "Violence Condoning",
+  threat_bin            = "Existential Threat",
+  outgroup_othering_bin = "Outgroup Othering"
+)
+REF_CAT <- "764"
+
+CATEGORY_LABELS <- c(
+  "764"              = "764",
+  "terrorgram"       = "Terrorgram",
+  "white-supremacist" = "White Supremacist"
+)
+
+CATEGORY_COLORS <- c(
+  "764"              = "#e74c3c",
+  "terrorgram"       = "#3498db",
+  "white-supremacist" = "#2ecc71"
+)
+
+FEATURE_ORDER <- c("Identity Fusion", "Violence Condoning",
+                    "Existential Threat", "Outgroup Othering")
+
+FEATURE_COLORS <- c(
+  "Identity Fusion"    = "#8e44ad",
+  "Violence Condoning" = "#c0392b",
+  "Existential Threat" = "#e67e22",
+  "Outgroup Othering"  = "#2980b9"
+)
+
+theme_pub <- function(base_size = 11) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.title    = element_text(face = "bold", size = base_size + 2),
+      plot.subtitle = element_text(size = base_size, colour = "grey40"),
+      axis.title    = element_text(size = base_size),
+      legend.title  = element_text(face = "bold", size = base_size),
+      legend.position  = "bottom",
+      panel.grid.minor = element_blank(),
+      strip.text       = element_text(face = "bold")
+    )
+}
+```
+
+## Data Loading
+
+```{r load-data}
+df <- read_csv(DATA_PATH, col_types = cols(.default = "c")) %>%
+  select(category, channel, all_of(FEATURES)) %>%
+  mutate(across(all_of(FEATURES), as.integer))
+```
+
+The corpus contains **`r format(nrow(df), big.mark = ",")`** messages across **`r n_distinct(df$channel)`** channels in **`r n_distinct(df$category)`** movement categories (`r paste(names(CATEGORY_LABELS), collapse = ", ")`).
+
+---
+
+## Analysis A: Cross-Category DCM Prevalence
+
+Analysis A compares the prevalence of each DCM feature (Identity Fusion, Violence Condoning, Existential Threat, Outgroup Othering) across the three movement categories. Descriptive rates are reported with Wilson 95% confidence intervals, followed by chi-square tests of independence and logistic regression with cluster-robust standard errors (clustered by channel) to account for the non-independence of messages within channels.
+
+### A1: Prevalence with Wilson CIs
+
+```{r a1-prevalence}
+wilson_ci <- function(k, n, alpha = 0.05) {
+  if (n == 0) return(tibble(prev = NA, ci_lo = NA, ci_hi = NA))
+  p <- k / n
+  z <- qnorm(1 - alpha / 2)
+  denom <- 1 + z^2 / n
+  centre <- (p + z^2 / (2 * n)) / denom
+  margin <- z * sqrt(p * (1 - p) / n + z^2 / (4 * n^2)) / denom
+  tibble(prev = p, ci_lo = max(0, centre - margin), ci_hi = min(1, centre + margin))
+}
+
+prevalence <- map_dfr(FEATURES, function(feat) {
+  df %>%
+    filter(!is.na(.data[[feat]])) %>%
+    group_by(category) %>%
+    summarise(n = n(), k = sum(.data[[feat]]), .groups = "drop") %>%
+    rowwise() %>%
+    mutate(wilson_ci(k, n)) %>%
+    ungroup() %>%
+    mutate(feature = FEATURE_LABELS[feat])
+}) %>%
+  select(feature, category, n, k, prev, ci_lo, ci_hi)
+
+write_csv(prevalence, file.path(OUTPUT_DIR, "A_prevalence.csv"))
+
+prevalence %>%
+  mutate(across(c(prev, ci_lo, ci_hi), ~ percent(., accuracy = 0.1))) %>%
+  kable(col.names = c("Feature", "Category", "N", "Flagged", "Prevalence", "CI Low", "CI High"),
+        caption = "DCM feature prevalence by movement category (Wilson 95% CIs)")
+```
+
+```{r prevalence-plot, fig.height=4}
+prev_plot <- prevalence %>%
+  mutate(
+    feature = factor(feature, levels = FEATURE_ORDER),
+    category = factor(category, levels = names(CATEGORY_LABELS))
+  )
+
+p_prev <- ggplot(prev_plot, aes(x = category, y = prev, fill = category)) +
+  geom_col(width = 0.7, alpha = 0.85) +
+  geom_errorbar(aes(ymin = ci_lo, ymax = ci_hi), width = 0.2, linewidth = 0.4) +
+  facet_wrap(~feature, scales = "free_y", nrow = 1) +
+  scale_fill_manual(values = CATEGORY_COLORS, labels = CATEGORY_LABELS, name = NULL) +
+  scale_x_discrete(labels = CATEGORY_LABELS) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+  labs(
+    title = "DCM Feature Prevalence by Movement Category",
+    subtitle = "Bars show proportion of messages flagged; error bars = Wilson 95% CIs",
+    x = NULL, y = "Prevalence"
+  ) +
+  theme_pub() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+p_prev
+
+ggsave(file.path(FIGURES_DIR, "prevalence.pdf"), p_prev, width = 12, height = 4)
+```
+
+### A2: Chi-Square Tests of Independence
+
+```{r a2-chisquare}
+chisq_results <- map_dfr(FEATURES, function(feat) {
+  sub <- df %>% filter(!is.na(.data[[feat]]))
+  ct <- table(sub$category, sub[[feat]])
+  test <- chisq.test(ct)
+  n <- sum(ct)
+  cramers_v <- sqrt(test$statistic / (n * (min(dim(ct)) - 1)))
+  tibble(
+    feature   = FEATURE_LABELS[feat],
+    chi_sq    = as.numeric(test$statistic),
+    df        = test$parameter,
+    p_value   = test$p.value,
+    cramers_v = as.numeric(cramers_v)
+  )
+})
+
+write_csv(chisq_results, file.path(OUTPUT_DIR, "A_chisquare.csv"))
+
+chisq_results %>%
+  mutate(
+    chi_sq    = round(chi_sq, 1),
+    p_value   = formatC(p_value, format = "e", digits = 2),
+    cramers_v = round(cramers_v, 4)
+  ) %>%
+  kable(col.names = c("Feature", "Chi-sq", "df", "p-value", "Cramer's V"),
+        caption = "Chi-square tests of feature x category independence")
+```
+
+### A3: Logistic Regression with Cluster-Robust Standard Errors
+
+Standard GLM with sandwich/vcovCL cluster-robust (Huber-White) standard errors, clustered by channel. This is equivalent to GEE with independence working correlation and robust variance estimation. Reference category: 764.
+
+```{r a3-gee}
+gee_results <- map_dfr(FEATURES, function(feat) {
+  sub <- df %>%
+    filter(!is.na(.data[[feat]])) %>%
+    mutate(
+      y = .data[[feat]],
+      category = relevel(factor(category), ref = REF_CAT),
+      channel_f = factor(channel)
+    )
+
+  fit <- glm(y ~ category, data = sub, family = binomial(link = "logit"))
+  robust <- coeftest(fit, vcov = vcovCL(fit, cluster = sub$channel_f))
+
+  as_tibble(robust[, , drop = FALSE], rownames = "term") %>%
+    rename(estimate = Estimate, std.error = `Std. Error`,
+           statistic = `z value`, p.value = `Pr(>|z|)`) %>%
+    filter(term != "(Intercept)") %>%
+    mutate(
+      feature    = FEATURE_LABELS[feat],
+      comparison = str_remove(term, "^category"),
+      odds_ratio = exp(estimate),
+      ci_lo      = exp(estimate - 1.96 * std.error),
+      ci_hi      = exp(estimate + 1.96 * std.error)
+    ) %>%
+    select(feature, comparison, odds_ratio, ci_lo, ci_hi, p_value = p.value)
+})
+
+write_csv(gee_results, file.path(OUTPUT_DIR, "A_gee.csv"))
+
+gee_results %>%
+  mutate(
+    across(c(odds_ratio, ci_lo, ci_hi), ~ round(., 3)),
+    p_value = formatC(p_value, format = "e", digits = 2)
+  ) %>%
+  kable(col.names = c("Feature", "Comparison (vs. 764)", "OR", "CI Low", "CI High", "p-value"),
+        caption = "Odds ratios from cluster-robust logistic regression (reference = 764)")
+```
+
+```{r gee-forest, fig.height=3.5}
+gee_plot <- gee_results %>%
+  mutate(
+    feature = factor(feature, levels = FEATURE_ORDER),
+    comparison = str_replace_all(comparison, c(
+      "terrorgram"       = "Terrorgram",
+      "white-supremacist" = "White Supremacist"
+    ))
+  )
+
+p_gee <- ggplot(gee_plot, aes(x = odds_ratio, y = comparison, colour = comparison)) +
+  geom_vline(xintercept = 1, linetype = "dashed", colour = "grey50") +
+  geom_pointrange(aes(xmin = ci_lo, xmax = ci_hi), linewidth = 0.5, size = 0.5) +
+  facet_wrap(~feature, scales = "free_x", nrow = 1) +
+  scale_colour_manual(
+    values = c("Terrorgram" = "#3498db", "White Supremacist" = "#2ecc71"),
+    name = NULL
+  ) +
+  scale_x_log10() +
+  labs(
+    title = "Odds of DCM Feature Presence by Category (vs. 764)",
+    subtitle = "GEE logistic regression clustered by channel; log scale",
+    x = "Odds Ratio", y = NULL
+  ) +
+  theme_pub()
+
+p_gee
+
+ggsave(file.path(FIGURES_DIR, "gee_forest.pdf"), p_gee, width = 12, height = 3.5)
+```
+
+---
+
+## Analysis B: Feature Co-occurrence
+
+Analysis B examines whether DCM features co-occur within the same messages more than expected by chance — the "Deadly Cocktail" hypothesis. It reports the distribution of feature counts per message (0--4 simultaneous features), pairwise phi coefficients for each feature pair, and a binomial test of whether the "full cocktail" (all four features present) exceeds the rate expected under independence.
+
+### B1: Feature Count Distribution
+
+```{r b1-feature-counts}
+df_complete <- df %>% filter(if_all(all_of(FEATURES), ~ !is.na(.)))
+df_complete <- df_complete %>%
+  mutate(n_features = rowSums(across(all_of(FEATURES))))
+
+count_dist <- df_complete %>%
+  group_by(category, n_features) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(category) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup()
+
+write_csv(count_dist, file.path(OUTPUT_DIR, "B_feature_count_distribution.csv"))
+
+count_overall <- df_complete %>%
+  count(n_features) %>%
+  mutate(prop = n / sum(n))
+
+write_csv(count_overall, file.path(OUTPUT_DIR, "B_feature_count_overall.csv"))
+```
+
+```{r feature-counts-plot, fig.width=8, fig.height=5}
+counts_plot <- count_dist %>%
+  mutate(category = factor(category, levels = names(CATEGORY_LABELS)))
+
+p_counts <- ggplot(counts_plot, aes(x = factor(n_features), y = prop, fill = category)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, alpha = 0.85) +
+  scale_fill_manual(values = CATEGORY_COLORS, labels = CATEGORY_LABELS, name = NULL) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Number of DCM Features per Message",
+    subtitle = "Proportion of messages exhibiting 0\u20134 simultaneous features",
+    x = "Number of features present", y = "Proportion of messages"
+  ) +
+  theme_pub()
+
+p_counts
+
+ggsave(file.path(FIGURES_DIR, "feature_counts.pdf"), p_counts, width = 8, height = 5)
+```
+
+### B2: Pairwise Co-occurrence
+
+```{r b2-pairwise}
+feat_pairs <- combn(FEATURES, 2, simplify = FALSE)
+
+pairwise <- map_dfr(feat_pairs, function(pair) {
+  a <- pair[1]; b <- pair[2]
+  va <- df_complete[[a]]; vb <- df_complete[[b]]
+  n <- length(va)
+  obs <- sum(va == 1 & vb == 1)
+  pa <- mean(va); pb <- mean(vb)
+  exp_val <- pa * pb * n
+  ct <- table(factor(va, 0:1), factor(vb, 0:1))
+  chi <- chisq.test(ct, correct = FALSE)
+  phi <- sqrt(chi$statistic / n) * sign(obs - exp_val)
+  a11 <- as.double(ct[2, 2]); a10 <- as.double(ct[2, 1])
+  a01 <- as.double(ct[1, 2]); a00 <- as.double(ct[1, 1])
+  or <- (a11 * a00) / (a10 * a01)
+  tibble(
+    feature_a    = FEATURE_LABELS[a],
+    feature_b    = FEATURE_LABELS[b],
+    observed     = obs,
+    expected     = round(exp_val, 1),
+    obs_exp_ratio = round(obs / exp_val, 2),
+    phi          = round(as.numeric(phi), 4),
+    odds_ratio   = round(as.numeric(or), 2),
+    chi_sq       = round(as.numeric(chi$statistic), 1),
+    p_value      = chi$p.value
+  )
+})
+
+write_csv(pairwise, file.path(OUTPUT_DIR, "B_pairwise_cooccurrence.csv"))
+
+pairwise %>%
+  mutate(p_value = formatC(p_value, format = "e", digits = 2)) %>%
+  kable(caption = "Pairwise co-occurrence: observed vs. expected, phi, and odds ratios (overall)")
+```
+
+```{r b2-pairwise-by-category}
+pairwise_by_cat <- map_dfr(feat_pairs, function(pair) {
+  a <- pair[1]; b <- pair[2]
+  map_dfr(unique(df_complete$category), function(cat) {
+    sub <- df_complete %>% filter(category == cat)
+    va <- sub[[a]]; vb <- sub[[b]]
+    n <- length(va)
+    obs <- sum(va == 1 & vb == 1)
+    exp_val <- mean(va) * mean(vb) * n
+    ct <- table(factor(va, 0:1), factor(vb, 0:1))
+    chi <- suppressWarnings(chisq.test(ct, correct = FALSE))
+    phi <- sqrt(chi$statistic / n) * sign(obs - exp_val)
+    tibble(
+      feature_a    = FEATURE_LABELS[a],
+      feature_b    = FEATURE_LABELS[b],
+      category     = cat,
+      observed     = obs,
+      expected     = round(exp_val, 1),
+      obs_exp_ratio = round(obs / max(exp_val, 1), 2),
+      phi          = round(as.numeric(phi), 4),
+      p_value      = chi$p.value
+    )
+  })
+})
+
+write_csv(pairwise_by_cat, file.path(OUTPUT_DIR, "B_pairwise_by_category.csv"))
+```
+
+```{r cooccurrence-plot, fig.width=14, fig.height=5}
+pairs_plot <- pairwise_by_cat %>%
+  mutate(
+    feature_a = factor(feature_a, levels = FEATURE_ORDER),
+    feature_b = factor(feature_b, levels = FEATURE_ORDER),
+    category = factor(category, levels = names(CATEGORY_LABELS))
+  )
+
+p_cooc <- ggplot(pairs_plot, aes(x = feature_a, y = feature_b, fill = phi)) +
+  geom_tile(colour = "white", linewidth = 0.5) +
+  geom_text(aes(label = sprintf("%.3f", phi)), size = 3) +
+  facet_wrap(~category, labeller = labeller(category = CATEGORY_LABELS)) +
+  scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b",
+                       midpoint = 0, name = expression(phi)) +
+  labs(
+    title = "Pairwise Co-occurrence of DCM Features",
+    subtitle = "Phi coefficients; higher values indicate stronger positive association",
+    x = NULL, y = NULL
+  ) +
+  theme_pub() +
+  theme(
+    axis.text.x = element_text(angle = 35, hjust = 1, size = 8,
+                                colour = FEATURE_COLORS[levels(pairs_plot$feature_a)]),
+    axis.text.y = element_text(size = 8,
+                                colour = FEATURE_COLORS[levels(pairs_plot$feature_b)])
+  )
+
+p_cooc
+
+ggsave(file.path(FIGURES_DIR, "cooccurrence_phi.pdf"), p_cooc, width = 14, height = 5)
+```
+
+### B3: Full Cocktail Test
+
+Under independence, P(all 4 features) = P(IF) x P(VL) x P(TH) x P(OO). A one-sided binomial test assesses whether the observed count of "full cocktail" messages significantly exceeds this expected rate.
+
+```{r b3-cocktail}
+cocktail <- df_complete %>%
+  group_by(category) %>%
+  summarise(
+    n = n(),
+    all_four = sum(n_features == 4),
+    p_if = mean(identityfusion_bin),
+    p_vl = mean(violentlang_bin),
+    p_th = mean(threat_bin),
+    p_oo = mean(outgroup_othering_bin),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    p_indep  = p_if * p_vl * p_th * p_oo,
+    expected = p_indep * n,
+    ratio    = round(all_four / pmax(expected, 0.01), 1),
+    binom_p  = pbinom(all_four - 1, n, p_indep, lower.tail = FALSE)
+  )
+
+write_csv(
+  cocktail %>% select(category, n, all_four, expected, ratio, binom_p),
+  file.path(OUTPUT_DIR, "B_full_cocktail_test.csv")
+)
+
+cocktail %>%
+  select(category, n, all_four, expected, ratio, binom_p) %>%
+  mutate(
+    expected = round(expected, 1),
+    binom_p  = formatC(binom_p, format = "e", digits = 2)
+  ) %>%
+  kable(col.names = c("Category", "N", "Observed (all 4)", "Expected", "Obs/Exp Ratio", "Binomial p"),
+        caption = "Full cocktail test: observed vs. expected frequency of all 4 features co-occurring")
+```
+
+---
+
+## Analysis C: Channel-Level Variance
+
+Analysis C provides a robustness check by disaggregating results to the channel level. It reports per-channel DCM feature prevalence rates and summary statistics (mean, SD, quartiles) of per-channel prevalence by category. This demonstrates that the cross-group differences observed in Analysis A are not driven by a few high-volume or outlier channels, and provides a measure of within-category heterogeneity.
+
+### C1: Per-Channel Detail
+
+```{r c1-channel-detail}
+channel_detail <- df %>%
+  group_by(category, channel) %>%
+  summarise(
+    n_messages = n(),
+    across(all_of(FEATURES), ~ mean(., na.rm = TRUE), .names = "prev_{.col}"),
+    .groups = "drop"
+  ) %>%
+  arrange(category, desc(n_messages))
+
+write_csv(channel_detail, file.path(OUTPUT_DIR, "C_channel_detail.csv"))
+```
+
+### C2: Summary Statistics of Per-Channel Prevalence
+
+```{r c2-channel-summary}
+channel_dcm_summary <- map_dfr(FEATURES, function(feat) {
+  prev_col <- paste0("prev_", feat)
+  channel_detail %>%
+    group_by(category) %>%
+    summarise(
+      feature     = FEATURE_LABELS[feat],
+      n_channels  = n(),
+      mean_prev   = mean(.data[[prev_col]], na.rm = TRUE),
+      sd_prev     = sd(.data[[prev_col]], na.rm = TRUE),
+      min_prev    = min(.data[[prev_col]], na.rm = TRUE),
+      q25_prev    = quantile(.data[[prev_col]], 0.25, na.rm = TRUE),
+      median_prev = median(.data[[prev_col]], na.rm = TRUE),
+      q75_prev    = quantile(.data[[prev_col]], 0.75, na.rm = TRUE),
+      max_prev    = max(.data[[prev_col]], na.rm = TRUE),
+      .groups = "drop"
+    )
+})
+
+write_csv(channel_dcm_summary, file.path(OUTPUT_DIR, "C_channel_dcm_summary.csv"))
+
+channel_dcm_summary %>%
+  mutate(across(c(mean_prev, sd_prev, min_prev, q25_prev, median_prev, q75_prev, max_prev),
+                ~ percent(., accuracy = 0.1))) %>%
+  kable(col.names = c("Category", "Feature", "Channels", "Mean", "SD", "Min", "Q25", "Median", "Q75", "Max"),
+        caption = "Summary statistics of per-channel DCM prevalence by category")
+```
+
+### Channel-Level Prevalence Distribution
+
+Each point represents one channel's prevalence rate for a given DCM feature. Boxes show the interquartile range and median.
+
+```{r channel-variance-plot, fig.width=12, fig.height=5}
+channel_long <- channel_detail %>%
+  pivot_longer(cols = starts_with("prev_"), names_to = "feature", values_to = "prevalence") %>%
+  mutate(
+    feature = str_remove(feature, "prev_"),
+    feature = recode(feature,
+      identityfusion_bin = "Identity Fusion",
+      violentlang_bin = "Violence Condoning",
+      threat_bin = "Existential Threat",
+      outgroup_othering_bin = "Outgroup Othering"
+    ),
+    feature = factor(feature, levels = FEATURE_ORDER),
+    category = factor(category, levels = names(CATEGORY_LABELS))
+  )
+
+p_channel <- ggplot(channel_long, aes(x = category, y = prevalence, fill = category)) +
+  geom_boxplot(width = 0.5, alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.15, size = 1.5, alpha = 0.6) +
+  facet_wrap(~feature, scales = "free_y", nrow = 1) +
+  scale_fill_manual(values = CATEGORY_COLORS, labels = CATEGORY_LABELS, name = NULL) +
+  scale_x_discrete(labels = CATEGORY_LABELS) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Channel-Level DCM Feature Prevalence",
+    subtitle = "Each point = one channel; boxes show IQR and median",
+    x = NULL, y = "Prevalence within channel"
+  ) +
+  theme_pub() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+p_channel
+
+ggsave(file.path(FIGURES_DIR, "channel_variance.pdf"), p_channel, width = 12, height = 5)
+```
+
+---
+
+## Analysis D: Topic x DCM Integration
+
+Analysis D bridges the topic modelling results (Part 1) with the DCM annotation (Part 2) by asking: which topics are most associated with which DCM features? For each of the 19 topics per category, it computes the proportion of messages flagged for each DCM feature. Topics are then ranked by a composite DCM score (mean of the four feature proportions) and classified into profiles (e.g., "Full cocktail," "Othering + Violence"). A logistic regression tests which topics are significant predictors of each DCM feature within each category.
+
+### Data Preparation
+
+```{r d-data-prep}
+TOPICS_PATH <- file.path(BASE_DIR, "topic_modelling/step1_labels/telegram_topics_message_topics.csv")
+LABELS_PATH <- file.path(BASE_DIR, "topic_modelling/step1_labels/topic_labels.csv")
+
+topics <- read_csv(TOPICS_PATH, col_types = cols(.default = "c")) %>%
+  rename(channel_name = channel) %>%
+  mutate(topic = as.integer(as.numeric(topic)))
+
+df_full <- read_csv(DATA_PATH, col_types = cols(.default = "c")) %>%
+  select(category, channel, channel_name, text, all_of(FEATURES)) %>%
+  mutate(across(all_of(FEATURES), as.integer))
+
+df_full <- df_full %>%
+  mutate(text_lower = tolower(text)) %>%
+  left_join(
+    topics %>%
+      mutate(text_lower = tolower(text)) %>%
+      select(channel_name, category, text_lower, topic),
+    by = c("channel_name", "category", "text_lower")
+  ) %>%
+  select(-text, -text_lower)
+
+topic_labels <- read_csv(LABELS_PATH, col_types = cols(.default = "c")) %>%
+  select(category, topic, label) %>%
+  mutate(topic = as.integer(as.numeric(topic)))
+
+df_topics <- df_full %>%
+  filter(!is.na(topic)) %>%
+  left_join(topic_labels, by = c("category", "topic"))
+```
+
+Topic merge matched **`r format(nrow(df_topics), big.mark = ",")`** of **`r format(nrow(df_full), big.mark = ",")`** messages (`r round(100 * nrow(df_topics) / nrow(df_full), 1)`%).
+
+### D1: Topic-Feature Proportions
+
+```{r d1-topic-proportions}
+topic_props <- df_topics %>%
+  group_by(category, topic, label) %>%
+  summarise(
+    n = n(),
+    identity_fusion    = mean(identityfusion_bin, na.rm = TRUE),
+    violence_condoning = mean(violentlang_bin, na.rm = TRUE),
+    existential_threat = mean(threat_bin, na.rm = TRUE),
+    outgroup_othering  = mean(outgroup_othering_bin, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    composite_dcm = (identity_fusion + violence_condoning +
+                       existential_threat + outgroup_othering) / 4
+  ) %>%
+  arrange(category, desc(composite_dcm))
+
+write_csv(topic_props, file.path(OUTPUT_DIR, "D_topic_feature_proportions.csv"))
+```
+
+### D2: Topic Toxicity Ranking
+
+```{r d2-toxicity-ranking}
+toxic_ranking <- topic_props %>%
+  filter(topic >= 0) %>%
+  arrange(desc(composite_dcm)) %>%
+  mutate(rank = row_number())
+
+write_csv(toxic_ranking, file.path(OUTPUT_DIR, "D_topic_toxicity_ranking.csv"))
+
+toxic_ranking %>%
+  filter(rank <= 10) %>%
+  mutate(across(c(identity_fusion, violence_condoning, existential_threat,
+                  outgroup_othering, composite_dcm), ~ percent(., accuracy = 0.1))) %>%
+  select(rank, category, label, n, composite_dcm) %>%
+  kable(col.names = c("Rank", "Category", "Topic", "N", "Composite DCM"),
+        caption = "Top 10 topics by composite DCM score")
+```
+
+### D3: Topic Feature Profiles
+
+Topics are classified by their dominant DCM pattern relative to within-category medians.
+
+```{r d3-profiles}
+profiles <- topic_props %>%
+  filter(topic >= 0) %>%
+  group_by(category) %>%
+  mutate(
+    hi_oo = outgroup_othering  > median(outgroup_othering),
+    hi_vl = violence_condoning > median(violence_condoning),
+    hi_th = existential_threat > median(existential_threat),
+    hi_if = identity_fusion    > median(identity_fusion)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    n_high = hi_oo + hi_vl + hi_th + hi_if,
+    profile = case_when(
+      n_high == 4                ~ "Full cocktail",
+      hi_oo & hi_vl & hi_th     ~ "Othering + Violence + Threat",
+      hi_oo & hi_vl             ~ "Othering + Violence",
+      hi_oo & !hi_vl            ~ "Dehumanisation (othering only)",
+      hi_vl & !hi_oo            ~ "Violence without othering",
+      TRUE                      ~ "Low DCM"
+    )
+  ) %>%
+  select(category, topic, label, n,
+         identity_fusion, violence_condoning, existential_threat,
+         outgroup_othering, composite_dcm, profile)
+
+write_csv(profiles, file.path(OUTPUT_DIR, "D_topic_profiles.csv"))
+
+profiles %>%
+  count(category, profile) %>%
+  pivot_wider(names_from = category, values_from = n, values_fill = 0) %>%
+  kable(caption = "Topic profile distribution by category")
+```
+
+### D4: Logistic Regression — Topic as Predictor of DCM Features
+
+One model per feature per category (reference = Topic 0, the largest non-noise topic).
+
+```{r d4-topic-logistic}
+logistic_topic <- map_dfr(FEATURES, function(feat) {
+  map_dfr(unique(df_topics$category), function(cat) {
+    sub <- df_topics %>%
+      filter(category == cat, topic >= 0, !is.na(.data[[feat]])) %>%
+      mutate(
+        y = .data[[feat]],
+        topic_f = relevel(factor(topic), ref = "0")
+      )
+    fit <- glm(y ~ topic_f, data = sub, family = binomial(link = "logit"))
+    tidy(fit, conf.int = TRUE, exponentiate = TRUE) %>%
+      filter(term != "(Intercept)") %>%
+      mutate(
+        feature  = FEATURE_LABELS[feat],
+        category = cat,
+        topic    = as.integer(str_extract(term, "\\d+"))
+      ) %>%
+      left_join(topic_labels %>% filter(category == cat),
+                by = c("category", "topic")) %>%
+      select(feature, category, topic, label,
+             odds_ratio = estimate, ci_lo = conf.low, ci_hi = conf.high,
+             p_value = p.value)
+  })
+})
+
+write_csv(logistic_topic, file.path(OUTPUT_DIR, "D_topic_logistic.csv"))
+
+logistic_topic %>%
+  filter(p_value < 0.001) %>%
+  arrange(feature, category, desc(odds_ratio)) %>%
+  mutate(across(c(odds_ratio, ci_lo, ci_hi), ~ round(., 2)),
+         p_value = formatC(p_value, format = "e", digits = 2)) %>%
+  head(20) %>%
+  kable(caption = "Top significant topic predictors of DCM features (p < .001, top 20 by OR)")
+```
+
+### Topic-Feature Heatmap
+
+For each of the 19 topics per category, the proportion of messages flagged for each DCM feature. Topics are ordered bottom-to-top by composite DCM score within each category.
+
+```{r topic-heatmap, fig.width=10, fig.height=14}
+topic_props_plot <- topic_props %>%
+  filter(topic >= 0) %>%
+  mutate(
+    category = factor(category, levels = names(CATEGORY_LABELS)),
+    label_short = str_trunc(label, 28)
+  )
+
+heatmap_data <- topic_props_plot %>%
+  pivot_longer(
+    cols = c(identity_fusion, violence_condoning, existential_threat, outgroup_othering),
+    names_to = "feature", values_to = "proportion"
+  ) %>%
+  mutate(
+    feature = recode(feature,
+      identity_fusion = "Identity Fusion",
+      violence_condoning = "Violence Condoning",
+      existential_threat = "Existential Threat",
+      outgroup_othering  = "Outgroup Othering"
+    ),
+    feature = factor(feature, levels = FEATURE_ORDER)
+  )
+
+topic_order <- topic_props_plot %>%
+  arrange(category, composite_dcm) %>%
+  mutate(topic_label = paste0(category, ": ", label_short)) %>%
+  pull(topic_label)
+
+heatmap_data <- heatmap_data %>%
+  mutate(topic_label = factor(
+    paste0(category, ": ", label_short),
+    levels = topic_order
+  ))
+
+p_heatmap <- ggplot(heatmap_data, aes(x = feature, y = topic_label, fill = proportion)) +
+  geom_tile(colour = "white", linewidth = 0.3) +
+  facet_grid(category ~ ., scales = "free_y", space = "free_y",
+             labeller = labeller(category = CATEGORY_LABELS)) +
+  scale_fill_viridis_c(option = "mako", direction = -1, labels = percent_format(accuracy = 1),
+                       name = "Prevalence") +
+  labs(
+    title = "DCM Feature Prevalence by Topic",
+    subtitle = "Topics ordered by composite DCM score (lowest to highest within each category)",
+    x = NULL, y = NULL
+  ) +
+  theme_pub() +
+  theme(
+    axis.text.x = element_text(angle = 30, hjust = 1, size = 9,
+                                colour = FEATURE_COLORS[FEATURE_ORDER]),
+    axis.text.y = element_text(size = 7),
+    strip.text.y = element_text(angle = 0)
+  )
+
+p_heatmap
+
+ggsave(file.path(FIGURES_DIR, "topic_heatmap.pdf"), p_heatmap, width = 10, height = 14)
+```
+
+### Topic Toxicity Ranking (Top 20)
+
+The 20 topics with the highest composite DCM score (mean of the four feature proportions), coloured by movement category.
+
+```{r toxicity-ranking, fig.width=10, fig.height=7}
+ranking_plot <- toxic_ranking %>%
+  filter(rank <= 20) %>%
+  mutate(
+    category = factor(category, levels = names(CATEGORY_LABELS)),
+    topic_label = paste0(label, " [", category, "]"),
+    topic_label = fct_reorder(topic_label, composite_dcm)
+  )
+
+p_ranking <- ggplot(ranking_plot, aes(x = composite_dcm, y = topic_label, fill = category)) +
+  geom_col(alpha = 0.85, width = 0.7) +
+  scale_fill_manual(values = CATEGORY_COLORS, labels = CATEGORY_LABELS, name = NULL) +
+  scale_x_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Top 20 Most Toxic Topics by Composite DCM Score",
+    subtitle = "Composite = mean of four DCM feature proportions",
+    x = "Composite DCM Score", y = NULL
+  ) +
+  theme_pub() +
+  theme(axis.text.y = element_text(size = 8))
+
+p_ranking
+
+ggsave(file.path(FIGURES_DIR, "toxicity_ranking.pdf"), p_ranking, width = 10, height = 7)
+```
+
+---
+
+## Analysis E: Theme Prevalence Across Channel Types
+
+Since topic models were fitted separately per category (yielding category-specific topics), direct cross-category comparison of individual topics is not possible. Analysis E addresses this by mapping each topic to one or more shared thematic categories (e.g., Antisemitism, White Supremacy, CSAM/Exploitation, Firearms/Weapons) defined in `topic_themes.csv`. It then tests whether the distribution of themes differs across the three channel types using a chi-square test of independence and reports standardized residuals to identify which themes are significantly over- or under-represented in each category.
+
+### Data Preparation
+
+```{r e-data-prep}
+THEMES_PATH <- file.path(BASE_DIR, "topic_modelling/step5_cross_category/topic_themes.csv")
+
+topic_themes <- read_csv(THEMES_PATH, col_types = cols(.default = "c")) %>%
+  mutate(topic = as.integer(topic))
+
+topic_themes_long <- topic_themes %>%
+  separate_rows(themes, sep = ",\\s*") %>%
+  mutate(themes = str_trim(themes))
+
+df_themes <- df_topics %>%
+  filter(topic >= 0) %>%
+  left_join(
+    topic_themes_long %>% select(category, topic, theme = themes),
+    by = c("category", "topic"),
+    relationship = "many-to-many"
+  ) %>%
+  filter(!is.na(theme))
+```
+
+Theme join produced **`r format(nrow(df_themes), big.mark = ",")`** message-theme rows.
+
+### E1: Theme Prevalence Proportions
+
+```{r e1-theme-prevalence}
+theme_prev <- df_themes %>%
+  count(category, theme) %>%
+  group_by(category) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup()
+
+write_csv(theme_prev, file.path(OUTPUT_DIR, "E_theme_prevalence.csv"))
+```
+
+```{r theme-prevalence-plot, fig.width=12, fig.height=6}
+theme_prev_plot <- theme_prev %>%
+  mutate(category = factor(category, levels = names(CATEGORY_LABELS)))
+
+p_theme_prev <- ggplot(theme_prev_plot, aes(x = reorder(theme, -prop), y = prop, fill = category)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, alpha = 0.85) +
+  scale_fill_manual(values = CATEGORY_COLORS, labels = CATEGORY_LABELS, name = NULL) +
+  scale_y_continuous(labels = percent_format(accuracy = 0.1)) +
+  labs(
+    title = "Thematic Distribution Across Movement Categories",
+    subtitle = "Messages assigned to shared thematic categories",
+    x = NULL, y = "Proportion of messages"
+  ) +
+  theme_pub() +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+p_theme_prev
+
+ggsave(file.path(FIGURES_DIR, "theme_prevalence.pdf"), p_theme_prev, width = 12, height = 6)
+```
+
+### E2: Chi-Square Test (Theme x Category)
+
+```{r e2-chisquare}
+theme_ct <- df_themes %>%
+  count(category, theme) %>%
+  pivot_wider(names_from = category, values_from = n, values_fill = 0) %>%
+  column_to_rownames("theme") %>%
+  as.matrix()
+
+chisq_theme <- chisq.test(theme_ct)
+n_total_theme <- sum(theme_ct)
+k <- min(dim(theme_ct))
+cramers_v_theme <- as.numeric(sqrt(chisq_theme$statistic / (n_total_theme * (k - 1))))
+
+theme_chisq_result <- tibble(
+  test       = "theme_x_category",
+  chi_sq     = as.numeric(chisq_theme$statistic),
+  df         = chisq_theme$parameter,
+  p_value    = chisq_theme$p.value,
+  cramers_v  = cramers_v_theme
+)
+
+write_csv(theme_chisq_result, file.path(OUTPUT_DIR, "E_theme_chisquare.csv"))
+
+theme_chisq_result %>%
+  mutate(
+    chi_sq  = round(chi_sq, 1),
+    p_value = formatC(p_value, format = "e", digits = 2),
+    cramers_v = round(cramers_v, 3)
+  ) %>%
+  kable(caption = "Chi-square test of theme x category independence")
+```
+
+### E3: Standardized Residuals
+
+Values above +2 or below -2 indicate statistically significant over- or under-representation of a theme within a category.
+
+```{r e3-std-residuals}
+std_resid <- as_tibble(as.data.frame.table(chisq_theme$stdres)) %>%
+  rename(theme = Var1, category = Var2, std_residual = Freq)
+
+write_csv(std_resid, file.path(OUTPUT_DIR, "E_theme_std_residuals.csv"))
+```
+
+```{r theme-residuals-plot, fig.width=8, fig.height=6}
+std_resid_plot <- std_resid %>%
+  mutate(category = factor(category, levels = names(CATEGORY_LABELS)))
+
+p_resid <- ggplot(std_resid_plot, aes(x = category, y = theme, fill = std_residual)) +
+  geom_tile(colour = "white", linewidth = 0.5) +
+  geom_text(aes(label = sprintf("%.1f", std_residual)), size = 3.5) +
+  scale_fill_gradient2(low = "#2166ac", mid = "white", high = "#b2182b",
+                       midpoint = 0, name = "Std.\nResidual") +
+  scale_x_discrete(labels = CATEGORY_LABELS) +
+  labs(
+    title = "Theme \u00d7 Category Standardized Residuals",
+    subtitle = "Values > |2| indicate significant over/under-representation"
+  ) +
+  theme_pub() +
+  theme(legend.position = "right")
+
+p_resid
+
+ggsave(file.path(FIGURES_DIR, "theme_residuals.pdf"), p_resid, width = 8, height = 6)
+```
+
+---
+
+## Analysis F: DCM-to-Topic (Reverse Direction)
+
+Analysis F reverses the perspective of Analysis D: instead of asking "which topics carry the most DCM features?", it asks "for messages flagged with a given DCM feature, what topics and themes appear?" This reveals the thematic content that characterises radicalisation-relevant language. It reports within-category topic distributions for DCM+ vs DCM- messages, cross-category theme distributions restricted to DCM+ messages, and log-odds enrichment scores identifying which topics are most over-represented among DCM-positive messages.
+
+### F1: Topic Distribution for DCM+ vs DCM- Messages
+
+```{r f1-topic-distribution}
+dcm_topic_dist <- map_dfr(FEATURES, function(feat) {
+  map_dfr(unique(df_topics$category), function(cat) {
+    sub <- df_topics %>%
+      filter(category == cat, topic >= 0, !is.na(.data[[feat]]))
+    sub %>%
+      mutate(dcm_group = ifelse(.data[[feat]] == 1, "DCM+", "DCM-")) %>%
+      count(dcm_group, topic, label) %>%
+      group_by(dcm_group) %>%
+      mutate(prop = n / sum(n)) %>%
+      ungroup() %>%
+      mutate(feature = FEATURE_LABELS[feat], category = cat)
+  })
+})
+
+write_csv(dcm_topic_dist, file.path(OUTPUT_DIR, "F_dcm_topic_distribution.csv"))
+```
+
+### F2: Theme Distribution of DCM+ Messages
+
+```{r f2-theme-distribution}
+dcm_theme_dist <- map_dfr(FEATURES, function(feat) {
+  df_themes %>%
+    filter(!is.na(.data[[feat]]), .data[[feat]] == 1) %>%
+    count(category, theme) %>%
+    group_by(category) %>%
+    mutate(prop = n / sum(n)) %>%
+    ungroup() %>%
+    mutate(feature = FEATURE_LABELS[feat])
+})
+
+write_csv(dcm_theme_dist, file.path(OUTPUT_DIR, "F_dcm_theme_distribution.csv"))
+```
+
+```{r dcm-theme-dist-plot, fig.width=14, fig.height=8}
+dcm_theme_plot <- dcm_theme_dist %>%
+  mutate(
+    category = factor(category, levels = names(CATEGORY_LABELS)),
+    feature = factor(feature, levels = FEATURE_ORDER)
+  )
+
+p_dcm_theme <- ggplot(dcm_theme_plot, aes(x = reorder(theme, -prop), y = prop, fill = category)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7, alpha = 0.85) +
+  facet_wrap(~feature, nrow = 2, scales = "free_y") +
+  scale_fill_manual(values = CATEGORY_COLORS, labels = CATEGORY_LABELS, name = NULL) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    title = "Thematic Content of DCM-Positive Messages",
+    subtitle = "For messages flagged with each DCM feature, theme distribution by category",
+    x = NULL, y = "Proportion of DCM+ messages"
+  ) +
+  theme_pub() +
+  theme(axis.text.x = element_text(angle = 40, hjust = 1, size = 7))
+
+p_dcm_theme
+
+ggsave(file.path(FIGURES_DIR, "dcm_theme_dist.pdf"), p_dcm_theme, width = 14, height = 8)
+```
+
+### F3: Log-Odds Topic Enrichment
+
+Log-odds enrichment scores for topics in DCM+ vs DCM- messages, with Laplace smoothing. Positive values indicate topics that are over-represented among messages flagged with that DCM feature.
+
+```{r f3-topic-enrichment}
+topic_enrichment <- map_dfr(FEATURES, function(feat) {
+  map_dfr(unique(df_topics$category), function(cat) {
+    sub <- df_topics %>%
+      filter(category == cat, topic >= 0, !is.na(.data[[feat]]))
+    n_pos <- sum(sub[[feat]] == 1)
+    n_neg <- sum(sub[[feat]] == 0)
+    if (n_pos == 0 || n_neg == 0) return(tibble())
+    sub %>%
+      group_by(topic, label) %>%
+      summarise(
+        n_dcm_pos = sum(.data[[feat]] == 1),
+        n_dcm_neg = sum(.data[[feat]] == 0),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        prop_pos = (n_dcm_pos + 0.5) / (n_pos + 1),
+        prop_neg = (n_dcm_neg + 0.5) / (n_neg + 1),
+        log_odds = log(prop_pos / prop_neg),
+        feature  = FEATURE_LABELS[feat],
+        category = cat
+      )
+  })
+})
+
+write_csv(topic_enrichment, file.path(OUTPUT_DIR, "F_topic_enrichment.csv"))
+```
+
+```{r topic-enrichment-plot, fig.width=16, fig.height=10}
+enrichment_plot <- topic_enrichment %>%
+  mutate(
+    category = factor(category, levels = names(CATEGORY_LABELS)),
+    feature = factor(feature, levels = FEATURE_ORDER)
+  )
+
+top_enriched <- enrichment_plot %>%
+  group_by(feature, category) %>%
+  slice_max(abs(log_odds), n = 5) %>%
+  ungroup()
+
+p_enrich <- ggplot(top_enriched, aes(x = log_odds, y = reorder(label, log_odds),
+                                 colour = feature)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50") +
+  geom_point(size = 2.5) +
+  facet_grid(category ~ feature, scales = "free_y", space = "free_y",
+             labeller = labeller(category = CATEGORY_LABELS)) +
+  scale_colour_manual(values = FEATURE_COLORS, guide = "none") +
+  labs(
+    title = "Topic Enrichment in DCM-Positive Messages",
+    subtitle = "Log-odds ratio: positive = over-represented among DCM+ messages",
+    x = "Log Odds Ratio", y = NULL
+  ) +
+  theme_pub() +
+  theme(axis.text.y = element_text(size = 7), strip.text.y = element_text(angle = 0))
+
+p_enrich
+
+ggsave(file.path(FIGURES_DIR, "topic_enrichment.pdf"), p_enrich, width = 16, height = 10)
+```
+
+---
+
+## Analysis G: Shared vs. Movement-Unique Theme DCM Check
+
+To rule out the possibility that convergent DCM patterns are simply driven by the small set of themes shared across movements (e.g., Antisemitism, Racism/WN), we classify each topic's theme as "shared" (the theme appears in two or more movements) or "unique" (the theme appears in only one movement) and compare DCM feature prevalence across the two groups.
+
+### G1: Theme Overlap Classification
+
+```{r g1-theme-overlap}
+# Determine which themes appear in which movements
+theme_by_movement <- topic_themes_long %>%
+  distinct(category, theme = themes) %>%
+  group_by(theme) %>%
+  summarise(
+    n_movements = n_distinct(category),
+    movements   = paste(sort(unique(category)), collapse = ", "),
+    .groups     = "drop"
+  ) %>%
+  mutate(overlap_status = ifelse(n_movements >= 2, "Shared", "Unique"))
+
+theme_by_movement %>%
+  arrange(desc(n_movements), theme) %>%
+  kable(col.names = c("Theme", "N movements", "Movements", "Status"),
+        caption = "Theme overlap classification")
+```
+
+### G2: Topic-Level Classification and DCM Comparison
+
+```{r g2-shared-unique-dcm}
+# Assign overlap status to each topic via its theme
+topic_overlap <- topic_themes_long %>%
+  rename(theme = themes) %>%
+  left_join(theme_by_movement %>% select(theme, overlap_status), by = "theme")
+
+# For topics with multiple themes, classify as "Shared" if ANY theme is shared
+topic_overlap_summary <- topic_overlap %>%
+  group_by(category, topic, label) %>%
+  summarise(
+    overlap_status = ifelse(any(overlap_status == "Shared"), "Shared", "Unique"),
+    .groups = "drop"
+  )
+
+# Join to message-level DCM data
+df_overlap <- df_topics %>%
+  filter(topic >= 0) %>%
+  left_join(topic_overlap_summary %>% select(category, topic, overlap_status),
+            by = c("category", "topic")) %>%
+  filter(!is.na(overlap_status))
+
+# Message-weighted DCM prevalence by overlap status within each movement
+overlap_dcm <- df_overlap %>%
+  group_by(category, overlap_status) %>%
+  summarise(
+    n_topics  = n_distinct(topic),
+    n_messages = n(),
+    identity_fusion    = mean(identityfusion_bin, na.rm = TRUE),
+    violence_condoning = mean(violentlang_bin, na.rm = TRUE),
+    existential_threat = mean(threat_bin, na.rm = TRUE),
+    outgroup_othering  = mean(outgroup_othering_bin, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(composite_dcm = (identity_fusion + violence_condoning +
+                            existential_threat + outgroup_othering) / 4)
+
+write_csv(overlap_dcm, file.path(OUTPUT_DIR, "G_shared_unique_dcm.csv"))
+
+overlap_dcm %>%
+  mutate(across(c(identity_fusion, violence_condoning, existential_threat,
+                  outgroup_othering, composite_dcm), ~ percent(., accuracy = 0.1))) %>%
+  kable(col.names = c("Movement", "Overlap", "Topics", "Messages",
+                       "Fusion", "Violence", "Threat", "Othering", "Composite"),
+        caption = "DCM prevalence by theme overlap status (message-weighted)")
+```
+
+### G3: Statistical Test
+
+We use a message-level logistic regression within each movement predicting each DCM feature from overlap status (shared vs. unique). A non-significant or small effect of overlap status would confirm that the DCM convergence is not driven by shared themes.
+
+```{r g3-overlap-test}
+overlap_tests <- map_dfr(FEATURES, function(feat) {
+  map_dfr(unique(df_overlap$category), function(cat) {
+    sub <- df_overlap %>% filter(category == cat)
+
+    # Check that both levels of overlap_status are present
+    if (n_distinct(sub$overlap_status) < 2) {
+      return(tibble(
+        feature = FEATURE_LABELS[feat], category = cat,
+        OR = NA_real_, ci_lower = NA_real_, ci_upper = NA_real_,
+        p_value = NA_real_, note = "Only one overlap group present"
+      ))
+    }
+
+    mod <- glm(as.formula(paste(feat, "~ overlap_status")),
+               data = sub, family = binomial)
+    tidy_mod <- tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>%
+      filter(term != "(Intercept)")
+
+    tibble(
+      feature  = FEATURE_LABELS[feat],
+      category = cat,
+      OR       = tidy_mod$estimate,
+      ci_lower = tidy_mod$conf.low,
+      ci_upper = tidy_mod$conf.high,
+      p_value  = tidy_mod$p.value,
+      note     = ""
+    )
+  })
+})
+
+write_csv(overlap_tests, file.path(OUTPUT_DIR, "G_overlap_logistic.csv"))
+
+overlap_tests %>%
+  mutate(
+    OR = round(OR, 2),
+    ci = paste0("[", round(ci_lower, 2), ", ", round(ci_upper, 2), "]"),
+    p_value = ifelse(p_value < 0.001, "< .001", round(p_value, 3))
+  ) %>%
+  select(category, feature, OR, ci, p_value) %>%
+  kable(col.names = c("Movement", "Feature", "OR (Unique vs Shared)", "95% CI", "p"),
+        caption = "Logistic regression: overlap status predicting DCM features (reference = Shared)")
+```
+
+### G4: Figure — Composite DCM by Overlap Status
+
+```{r g4-overlap-figure, fig.width=8, fig.height=5}
+# Topic-level composite DCM with overlap status
+topic_overlap_dcm <- topic_props %>%
+  filter(topic >= 0) %>%
+  left_join(topic_overlap_summary %>% select(category, topic, overlap_status),
+            by = c("category", "topic")) %>%
+  filter(!is.na(overlap_status))
+
+p_overlap <- ggplot(topic_overlap_dcm,
+                    aes(x = overlap_status, y = composite_dcm, colour = category)) +
+  geom_jitter(aes(size = n), width = 0.15, alpha = 0.6) +
+  stat_summary(fun = mean, geom = "crossbar", width = 0.4,
+               linewidth = 0.6, colour = "black") +
+  facet_wrap(~category, labeller = labeller(category = CATEGORY_LABELS)) +
+  scale_colour_manual(values = CATEGORY_COLORS, guide = "none") +
+  scale_size_continuous(name = "Messages", labels = comma) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  labs(
+    x = "Theme overlap status",
+    y = "Composite DCM score"
+  ) +
+  theme_pub()
+
+p_overlap
+
+ggsave(file.path(FIGURES_DIR, "shared_unique_dcm.pdf"), p_overlap, width = 8, height = 5)
+```
+
+---
+
+## Temporal DCM Prevalence
+
+Monthly DCM feature prevalence over time for each category, restricted to months with at least 30 messages. LOESS-smoothed trends with 95% confidence bands.
+
+```{r temporal-data}
+df_dated <- read_csv(DATA_PATH, col_types = cols(.default = "c")) %>%
+  select(category, channel, date, all_of(FEATURES)) %>%
+  mutate(
+    across(all_of(FEATURES), as.integer),
+    date = as.Date(date),
+    year_month = floor_date(date, "month")
+  ) %>%
+  filter(!is.na(date))
+
+temporal_dcm <- map_dfr(FEATURES, function(feat) {
+  df_dated %>%
+    filter(!is.na(.data[[feat]])) %>%
+    group_by(category, year_month) %>%
+    summarise(
+      n = n(),
+      k = sum(.data[[feat]]),
+      prev = k / n,
+      .groups = "drop"
+    ) %>%
+    mutate(feature = FEATURE_LABELS[feat])
+})
+
+write_csv(temporal_dcm, file.path(OUTPUT_DIR, "temporal_dcm_prevalence.csv"))
+```
+
+```{r temporal-dcm-plot, fig.width=12, fig.height=10}
+temporal_plot <- temporal_dcm %>%
+  filter(n >= 30) %>%
+  mutate(
+    category = factor(category, levels = names(CATEGORY_LABELS)),
+    feature = factor(feature, levels = FEATURE_ORDER),
+    year_month = as.Date(year_month)
+  )
+
+p_temporal <- ggplot(temporal_plot, aes(x = year_month, y = prev, colour = feature)) +
+  geom_point(size = 1, alpha = 0.3) +
+  geom_smooth(method = "loess", se = TRUE, linewidth = 1, span = 0.4, alpha = 0.15) +
+  facet_wrap(~category, ncol = 1, scales = "free_y",
+             labeller = labeller(category = CATEGORY_LABELS)) +
+  scale_colour_manual(values = FEATURE_COLORS, name = "DCM Feature") +
+  scale_fill_manual(values = FEATURE_COLORS, guide = "none") +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "6 months") +
+  labs(
+    title = "DCM Feature Prevalence Over Time",
+    subtitle = "Monthly prevalence (months with n \u2265 30); smoothed trend (LOESS) with 95% CI",
+    x = NULL, y = "Prevalence"
+  ) +
+  theme_pub() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    legend.position = "bottom",
+    strip.text = element_text(size = 11)
+  )
+
+p_temporal
+
+ggsave(file.path(FIGURES_DIR, "temporal_dcm.pdf"), p_temporal, width = 12, height = 10)
+```
+
+---
+
+## Transfer Entropy
+
+Transfer entropy measures directed temporal dependencies between DCM features within each category. Using daily aggregated time series, multivariate transfer entropy tests whether past values of one DCM feature significantly improve predictions of another feature's future values, beyond what the target feature's own history predicts. Significant flows (FDR-corrected, p < .05) are shown as directed edges, with edge width proportional to the transfer entropy magnitude. Lag labels indicate the temporal offset (in days) at which the dependency is strongest.
+
+### Directed Temporal Dependencies
+
+```{r transfer-entropy, fig.width=14, fig.height=5.5}
+te <- read_csv(file.path(OUTPUT_DIR, "transfer_entropy.csv"), show_col_types = FALSE) %>%
+  mutate(category = factor(category, levels = names(CATEGORY_LABELS)))
+
+# Fixed node positions (diamond layout)
+node_pos <- tibble(
+  feature = factor(FEATURE_ORDER, levels = FEATURE_ORDER),
+  x = c(0, 1, 0, -1),
+  y = c(1, 0, -1, 0)
+)
+
+NODE_RADIUS <- 0.35
+
+edges <- te %>%
+  left_join(node_pos, by = c("source" = "feature")) %>%
+  rename(x_src = x, y_src = y) %>%
+  left_join(node_pos, by = c("target" = "feature")) %>%
+  rename(x_tgt = x, y_tgt = y) %>%
+  mutate(
+    dx = x_tgt - x_src, dy = y_tgt - y_src,
+    len = sqrt(dx^2 + dy^2),
+    x_start = x_src + NODE_RADIUS * dx / len,
+    y_start = y_src + NODE_RADIUS * dy / len,
+    x_end = x_tgt - NODE_RADIUS * dx / len,
+    y_end = y_tgt - NODE_RADIUS * dy / len,
+    lag_label = str_extract(lags, "\\d+"),
+    perp_x = -dy / len * 0.14,
+    perp_y =  dx / len * 0.14
+  )
+
+edges <- edges %>%
+  group_by(category, target) %>%
+  mutate(
+    offset_sign = if_else(row_number() %% 2 == 0, -1, 1),
+    lbl_x = (x_start + x_end) / 2 + perp_x * offset_sign,
+    lbl_y = (y_start + y_end) / 2 + perp_y * offset_sign
+  ) %>%
+  ungroup()
+
+nodes_all <- te %>%
+  distinct(category) %>%
+  crossing(node_pos)
+
+p_te <- ggplot() +
+  geom_segment(
+    data = edges,
+    aes(x = x_start, y = y_start, xend = x_end, yend = y_end, linewidth = te),
+    arrow = arrow(length = unit(0.25, "cm"), type = "closed"),
+    colour = "grey30", alpha = 0.85
+  ) +
+  scale_linewidth_continuous(range = c(0.4, 2), guide = "none") +
+  geom_point(data = nodes_all, aes(x = x, y = y, fill = feature), size = 26,
+             colour = "grey30", shape = 21, stroke = 0.6) +
+  scale_fill_manual(values = FEATURE_COLORS, guide = "none") +
+  geom_text(data = nodes_all, aes(x = x, y = y, label = str_wrap(feature, 10)),
+            size = 3, lineheight = 0.85, fontface = "bold", colour = "white") +
+  geom_label(
+    data = edges,
+    aes(x = lbl_x, y = lbl_y, label = paste0("lag ", lag_label)),
+    size = 2.4, fill = "white", linewidth = 0.15, alpha = 0.92,
+    label.padding = unit(0.12, "lines")
+  ) +
+  facet_wrap(~category, labeller = labeller(category = CATEGORY_LABELS), nrow = 1) +
+  coord_fixed(xlim = c(-1.7, 1.7), ylim = c(-1.7, 1.7)) +
+  labs(
+    title = "Directed Temporal Dependencies Between DCM Features",
+    subtitle = "Multivariate transfer entropy (lags 1\u20137 days); edges = significant flows (p < .05, FDR-corrected)"
+  ) +
+  theme_pub() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none"
+  )
+
+p_te
+
+ggsave(file.path(FIGURES_DIR, "transfer_entropy.pdf"), p_te, width = 14, height = 5.5)
+```
