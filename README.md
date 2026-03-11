@@ -1,6 +1,8 @@
 # 3Telegram
-Different ideologies, same psychology
 [![DOI](https://zenodo.org/badge/1170709980.svg)](https://doi.org/10.5281/zenodo.18970860)
+
+Different ideologies, same psychology
+
 
 
 
