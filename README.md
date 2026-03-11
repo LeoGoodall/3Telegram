@@ -1,5 +1,8 @@
 # 3Telegram
 Different ideologies, same psychology
+[![DOI](https://zenodo.org/badge/1170709980.svg)](https://doi.org/10.5281/zenodo.18970860)
+
+
 
 The raw Telegram message data cannot be made publicly available due to the sensitive nature of the content. Aggregated analysis results, validation data, and analysis code are available and provided in the repository.
 
